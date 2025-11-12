@@ -363,8 +363,13 @@ def corpus_status():
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Lỗi khi đọc corpus JSON: {str(e)}")
 
-# Nếu muốn chạy local bằng python main.py
+# ---------------------------
+# Điểm vào ứng dụng khi chạy trực tiếp
+# ---------------------------
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000)
+
+
+
 
