@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <title>💬 Chat với Genora AI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f5f7fa;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .box {
+      width: 100%;
+      max-width: 720px;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    h1 { font-size: 22px; margin-bottom: 12px; text-align: center; }
+    textarea {
+      width: 100%; min-height: 80px; padding: 12px; font-size: 14px;
+      resize: none; box-sizing: border-box; border-radius: 8px;
+      border: 1px solid #ccc; margin-bottom: 12px;
+    }
+    .row { display: flex; justify-content: center; gap: 12px; width: 100%; }
+    button { padding: 10px 16px; font-size: 14px; cursor: pointer; }
+    .messages {
+      margin-top: 16px; display: flex; flex-direction: column; gap: 12px;
+      width: 100%; max-height: 400px; overflow-y: auto; padding: 8px;
+      scroll-behavior: smooth;
+    }
+    .msg { display: flex; gap: 10px; align-items: flex-start; }
+    .msg.user { justify-content: flex-start; }
+    .msg.assistant { justify-content: flex-start; }
+
+    /* Bubble chung */
+    .bubble {
+      padding: 10px 14px;
+      max-width: 90%;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      border-radius: 12px;
+      line-height: 1.6;
+      text-align: justify; /* căn đều hai bên */
+      font-size: 15px;
+    }
+
+    /* Bubble của user */
+    .msg.user .bubble {
+      background: #d0e6ff;
+      border: 1px solid #a8c8ff;
+    }
+
+    /* Bubble của assistant căn giữa nội dung */
+    .msg.assistant .bubble {
+      background: #e6ffe6;
+      border: 1px solid #b8e6b8;
+      margin: 0 auto;       /* căn giữa bubble trong khung chat */
+    }
+
+    /* Hỗ trợ danh sách */
+    .bubble ol, .bubble ul {
+      margin: 8px 0 8px 20px;
+      padding: 0;
+    }
+    .bubble li {
+      margin-bottom: 6px;
+    }
+    .bubble ul { list-style-type: "- "; } /* gạch ngang */
+    .bubble ol { list-style-type: decimal; } /* đánh số thứ tự */
+
+    .avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; }
+    .timestamp { font-size: 11px; color: #888; margin-top: 4px; }
+    .status { margin-top: 8px; font-size: 13px; color: #666; text-align: center; }
+
+    /* Typing indicator */
+    .typing {
+      display: flex; align-items: center; gap: 6px;
+      background: #e6ffe6; border: 1px solid #b8e6b8;
+      border-radius: 12px; padding: 8px 12px; max-width: 120px;
+    }
+    .typing span {
+      width: 6px; height: 6px; background: #666; border-radius: 50%;
+      display: inline-block; animation: bounce 1.2s infinite;
+    }
+    .typing span:nth-child(2) { animation-delay: 0.2s; }
+    .typing span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce {
+      0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
+      40% { transform: scale(1); opacity: 1; }
+    }
+    @keyframes fadeOut {
+      from { opacity: 1; transform: scale(1); }
+      to { opacity: 0; transform: scale(0.95); }
+    }
+    .typing.fade-out { animation: fadeOut 0.4s ease forwards; }
+
+    /* Bubble animations */
+    @keyframes fadeSlideInLeftBounce {
+      0% { opacity: 0; transform: translateX(-20px) scale(0.95); }
+      60% { opacity: 1; transform: translateX(0) scale(1.05); }
+      80% { transform: translateX(0) scale(0.97); }
+      100% { transform: translateX(0) scale(1); }
+    }
+    @keyframes fadeSlideInRightBounce {
+      0% { opacity: 0; transform: translateX(20px) scale(0.95); }
+      60% { opacity: 1; transform: translateX(0) scale(1.05); }
+      80% { transform: translateX(0) scale(0.97); }
+      100% { transform: translateX(0) scale(1); }
+    }
+    .msg.assistant .bubble.new { animation: fadeSlideInLeftBounce 0.5s ease forwards; }
+    .msg.user .bubble.new { animation: fadeSlideInRightBounce 0.5s ease forwards; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>💬 Chat với Genora AI</h1>
+    <textarea id="message" placeholder="Nhập câu hỏi của bạn..."></textarea>
+    <div class="row">
+      <button id="send">Gửi</button>
+      <button id="clear">Xóa lịch sử</button>
+     <button id="composeBtn">Sinh pháp thoại từ corpus</button>
+    </div>
+    <div class="status" id="status">Sẵn sàng.</div>
+    <div class="messages" id="messages"></div>
+  </div>
+
+ <script>
+  const API_URL = "https://genora-ai.up.railway.app";
+
+  const $msg = document.getElementById("message");
+  const $send = document.getElementById("send");
+  const $clear = document.getElementById("clear");
+  const $messages = document.getElementById("messages");
+  const $status = document.getElementById("status");
+  const $lastUserBtn = document.getElementById("lastUserBtn");
+  const $lastAssistantBtn = document.getElementById("lastAssistantBtn");
+
+  $msg.focus();
+  $msg.addEventListener("input", () => {
+    $msg.style.height = "auto";
+    $msg.style.height = $msg.scrollHeight + "px";
+  });
+
+  function addBubble(role, content) {
+    const wrapper = document.createElement("div");
+    wrapper.className = `msg ${role}`;
+
+    const avatar = document.createElement("img");
+    avatar.className = "avatar";
+    avatar.src = role === "user"
+      ? "https://cdn-icons-png.flaticon.com/512/1946/1946429.png"
+      : "https://cdn-icons-png.flaticon.com/512/4712/4712109.png";
+    avatar.alt = role;
+    avatar.title = role;
+
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.innerHTML = content;
+
+    bubble.classList.add("new");
+    bubble.addEventListener("animationend", () => {
+      bubble.classList.remove("new");
+    }, { once: true });
+
+    const time = document.createElement("div");
+    time.className = "timestamp";
+    time.textContent = new Date().toLocaleTimeString();
+
+    const contentBox = document.createElement("div");
+    contentBox.appendChild(bubble);
+    contentBox.appendChild(time);
+
+    wrapper.appendChild(avatar);
+    wrapper.appendChild(contentBox);
+    $messages.appendChild(wrapper);
+    $messages.scrollTop = $messages.scrollHeight;
+    return wrapper;
+  }
+
+  function addTypingIndicator() {
+    const wrapper = document.createElement("div");
+    wrapper.className = "msg assistant";
+
+    const avatar = document.createElement("img");
+    avatar.className = "avatar";
+    avatar.src = "https://cdn-icons-png.flaticon.com/512/4712/4712109.png";
+    avatar.alt = "assistant";
+    avatar.title = "assistant";
+
+    const typingBox = document.createElement("div");
+    typingBox.className = "typing";
+    typingBox.innerHTML = "<span></span><span></span><span></span>";
+
+    wrapper.appendChild(avatar);
+    wrapper.appendChild(typingBox);
+    $messages.appendChild(wrapper);
+    $messages.scrollTop = $messages.scrollHeight;
+    return wrapper;
+  }
+
+  let isSending = false;
+
+ async function sendMessage() {
+  const text = $msg.value.trim();
+  if (!text || isSending) return;
+  isSending = true;
+
+  // hiển thị tin nhắn user ngay lập tức
+  addBubble("user", text);
+  $msg.value = "";
+  $msg.style.height = "80px";
+  $status.textContent = "⏳ Đang gửi...";
+  $send.disabled = true;
+
+  const typingIndicator = addTypingIndicator();
+
+  try {
+    const resp = await fetch(`${API_URL}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.text();
+      throw new Error(`HTTP ${resp.status}: ${err}`);
+    }
+
+    const data = await resp.json();
+    const history = data.history || [];
+
+    // xóa typing indicator
+    if (typingIndicator && typingIndicator.parentNode) typingIndicator.remove();
+
+    // render lại toàn bộ hội thoại từ history
+    $messages.innerHTML = "";
+    history.forEach(h => addBubble(h.role, h.content));
+
+    $status.textContent = "✅ Đã nhận phản hồi.";
+  } catch (e) {
+    if (typingIndicator && typingIndicator.parentNode) typingIndicator.remove();
+    addBubble("assistant", `Lỗi: ${e.message}`);
+    $status.textContent = "❌ Lỗi khi gửi.";
+  } finally {
+    $send.disabled = false;
+    isSending = false;
+  }
+}
+
+  $send.addEventListener("click", sendMessage);
+  $msg.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  $clear.addEventListener("click", async () => {
+    try {
+      const resp = await fetch(`${API_URL}/clear`, { method: "POST" });
+      if (resp.ok) {
+        $messages.innerHTML = "";
+        $status.textContent = "🗑️ Đã xóa lịch sử.";
+      } else {
+        $status.textContent = "❌ Lỗi khi xóa lịch sử.";
+      }
+    } catch (e) {
+      $status.textContent = "❌ Lỗi khi xóa lịch sử.";
+    }
+  });
+
+  // Hiển thị lại lịch sử khi load trang
+  async function loadHistory() {
+    try {
+      const resp = await fetch(`${API_URL}/chat-history`);
+      if (resp.ok) {
+        const data = await resp.json();
+        const history = data.history || [];
+        history.forEach(h => addBubble(h.role, h.content));
+      }
+    } catch (e) {
+      console.error("Không thể tải lịch sử:", e);
+    }
+  }
+  loadHistory();
+
+  // ---------------------------
+  // Gọi endpoint last-user-message
+  // ---------------------------
+  async function showLastUserMessage() {
+    try {
+      const resp = await fetch(`${API_URL}/last-user-message`);
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.last_user_message) {
+          addBubble("user", "(Tin nhắn cuối cùng) " + data.last_user_message);
+          $status.textContent = "📩 Đã lấy tin nhắn cuối cùng của user.";
+        } else {
+          $status.textContent = data.message || "Không có dữ liệu.";
+        }
+      }
+    } catch (e) {
+      $status.textContent = "❌ Lỗi khi gọi last-user-message.";
+    }
+  }
+
+  // ---------------------------
+  // Gọi endpoint last-assistant-reply
+  // ---------------------------
+  async function showLastAssistantReply() {
+    try {
+      const resp = await fetch(`${API_URL}/last-assistant-reply`);
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.last_assistant_reply) {
+          addBubble("assistant", "(Phản hồi cuối cùng) " + data.last_assistant_reply);
+          $status.textContent = "🤖 Đã lấy phản hồi cuối cùng của assistant.";
+        } else {
+          $status.textContent = data.message || "Không có dữ liệu.";
+        }
+      }
+    } catch (e) {
+      $status.textContent = "❌ Lỗi khi gọi last-assistant-reply.";
+    }
+  }
+ document.getElementById("composeBtn").addEventListener("click", async () => {
+  const topic = $msg.value.trim();
+  if (!topic) {
+    $status.textContent = "⚠️ Vui lòng nhập chủ đề...";
+    $msg.focus();
+    return;
+  }
+  $msg.value = `compose ${topic}`;
+  await sendMessage();   // chờ hàm async hoàn tất
+  $msg.value = "";       // sau đó mới reset ô nhập
+});
+
+  $lastUserBtn.addEventListener("click", showLastUserMessage);
+  $lastAssistantBtn.addEventListener("click", showLastAssistantReply);
+</script>
+</body>
+</html>
